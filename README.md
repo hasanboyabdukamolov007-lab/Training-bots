@@ -5,65 +5,91 @@ Intended purpose: a five-bot Telegram subsystem (3 managers, 1 administrator,
 runs labelled synthetic requests in an isolated test environment, and trains
 employees on the actual product.
 
-## Current status: awaiting a scoping decision
+## Status
 
-The production system has been located and audited:
-**[`Alcana-taplink-page`](https://github.com/hasanboyabdukamolov007-lab/Alcana-taplink-page)**
-(commit `9c701bb`). It is real, clean, and healthy — 175 tests pass, typecheck
-clean.
+The production system is **[`Alcana-taplink-page`](https://github.com/hasanboyabdukamolov007-lab/Alcana-taplink-page)**
+(commit `9c701bb`), and it is a **lead-capture and notification** system — not a
+request-management one. A lead arrives, the app posts one message into the
+manager group, and a manager telephones the customer. There is no database, no
+ticket, no status, no assignment and no SLA, and the bot deliberately ignores
+the manager group entirely.
 
-It is, however, a **lead-capture and notification** system, not a
-customer-service **request-management** system. The manager group is a one-way
-notification sink that the bot deliberately ignores
-(`webhook/route.ts:95` — *"must stay silent there"*). There is no database, no
-request entity, no roles, no statuses, no assignment, no SLA, no internal notes,
-no escalation, and no audit log. Managers read a notification and telephone the
-customer; they take no action in Telegram at all.
+This subsystem therefore teaches **that** workflow, accurately, rather than a
+ticket workflow the product does not have. Full findings in
+[`AUDIT.md`](AUDIT.md); the workflow itself in
+[`docs/alcana-workflow.md`](docs/alcana-workflow.md).
 
-Consequently **1 of the 15 required training scenarios** is demonstrable against
-the real product. Read [`AUDIT.md`](AUDIT.md) for the full gap analysis and the
-documented manager-group workflow.
+Three scenarios:
 
-Two paths, differing by an order of magnitude in scope:
+| | Scenario | Teaches |
+|---|---|---|
+| **S1** | Reading a lead from the website form | every field, which one decides the follow-up, why escaped markup is correct |
+| **S2** | Understanding how the bot collected the lead | what the customer was actually asked, so you know what you must still ask |
+| **S3** | Recognising a lead that never arrived | the one silent failure, and what a manager can and cannot do about it |
 
-- **A — scope the training to the product that exists.** Teach the real
-  workflow: how a lead reaches the group, how to read each field, the bot's
-  4-step conversation, delivery failures, phone follow-up. Small, useful,
-  buildable now.
-- **B — build the request-management layer first,** then train on it. This is
-  what the specification describes, but it is a new product rather than an
-  extension.
+### Honesty mechanisms
 
-No work has been committed toward either until that is decided.
+This is a training tool, so being wrong is worse than being incomplete:
 
-## What is here and working today
+- **Every step records how it was executed** — `APPLICATION_INTEGRATION`
+  (checked against the production source), `SIMULATED` (checked against the
+  local reproduction), or `TELEGRAM_BOT_API` (a real Telegram call). The mode is
+  reported next to every result and is never blurred.
+- **A reproduction never stands in for the product.** Without
+  `ALCANA_SOURCE_PATH`, integration steps report `NOT TESTED`, never `PASS`.
+- **A drift check** reads the real source each run and confirms the seven fact
+  groups the material depends on. Its own tests mutate a throwaway copy to prove
+  it detects a renamed label, a changed service title, a dropped phone prefix and
+  a removed group-silence guard.
+- **`NOT TESTED` is excluded from the score** rather than counted as a pass.
 
-The environment-setup pieces, which are useful under either path above:
+## What is here
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| [`AUDIT.md`](AUDIT.md) | Audit findings, Telegram platform analysis, per-deliverable status |
-| [`docs/audit-evidence.md`](docs/audit-evidence.md) | Raw, reproducible command output from both audits |
-| [`.env.example`](.env.example) | Exact configuration template, placeholders only |
-| [`docs/botfather-setup.md`](docs/botfather-setup.md) | Creating the five bots, the test group, rights, and verification |
-| [`scripts/verify_training_bots.py`](scripts/verify_training_bots.py) | Read-only verifier for tokens, identities, group access |
-| [`scripts/test_verify_training_bots.py`](scripts/test_verify_training_bots.py) | Offline tests for the verifier (22 checks, no network) |
+| [`AUDIT.md`](AUDIT.md) | Audit findings, gap analysis, Telegram platform limits |
+| [`docs/alcana-workflow.md`](docs/alcana-workflow.md) | The production workflow, cited line by line |
+| [`docs/training-guide.md`](docs/training-guide.md) | Running a session; reading the results |
+| [`docs/botfather-setup.md`](docs/botfather-setup.md) | Test bot, test group, rights, verification |
+| [`docs/roadmap.md`](docs/roadmap.md) | What cannot be taught yet, in build order |
+| [`docs/audit-evidence.md`](docs/audit-evidence.md) | Raw reproducible command output |
+| `training/production.py` | Mirrored product facts + the drift check |
+| `training/leads.py` | Seeded synthetic lead generator |
+| `training/render.py` | Faithful reproduction of both notification formats |
+| `training/scenarios.py` | The three scenarios and their verification |
+| `training/runner.py` | CLI, isolation guard, run reports |
+| `training/modes.py` | Execution modes, audit log, token redaction |
+| `tests/test_training.py` | 91 offline checks |
+| `scripts/verify_training_bots.py` | Read-only verifier for tokens, identities, group access |
+| `scripts/test_verify_training_bots.py` | 22 offline checks for the verifier |
 
-Nothing here sends a Telegram message.
+Nothing posts to Telegram unless you pass `--post`, and that is refused unless
+every isolation guard passes.
 
 ## Quick start
 
+Python 3.9+, no dependencies.
+
 ```bash
-cp .env.example .env            # then fill in real tokens; .env is git-ignored
+export ALCANA_SOURCE_PATH=/path/to/Alcana-taplink-page   # enables real verification
+export TRAINING_ENVIRONMENT=training
+
+python3 -m training.runner --teach     # walkthrough + verified scenarios
+python3 -m training.runner --post      # also post to the configured test group
+```
+
+Set up the test bot and group first — [`docs/botfather-setup.md`](docs/botfather-setup.md) —
+then verify with:
+
+```bash
+cp .env.example .env                   # fill in real tokens; .env is git-ignored
 python3 scripts/verify_training_bots.py
 ```
 
-Python 3.9+, no dependencies. See [`docs/botfather-setup.md`](docs/botfather-setup.md)
-for the full walkthrough.
-
-To test the verifier itself with no network access:
+Tests, both offline:
 
 ```bash
+ALCANA_SOURCE_PATH=/path/to/Alcana-taplink-page python3 tests/test_training.py
 python3 scripts/test_verify_training_bots.py
 ```
 
@@ -73,6 +99,13 @@ python3 scripts/test_verify_training_bots.py
 - A chat not in `TRAINING_ALLOWED_CHAT_IDS` is never contacted — it fails closed.
 - Tokens are read from the environment or `.env`, never hardcoded, never committed,
   and scrubbed from all output including error messages.
-- All Telegram calls are read-only (`getMe`, `getChat`, `getChatMember`).
+- Posting is refused unless the environment is `training`, the target is in the
+  allowlist, absent from `TRAINING_FORBIDDEN_CHAT_IDS`, and the token differs
+  from the production one. The guard fails closed; all six refusals are tested.
+- Synthetic phone numbers are structurally valid but unallocated
+  (`+998 90 000 00 NN`) and must never be dialled.
+- Every posted message carries a `TEST MODE — DO NOT ACTION` banner naming the
+  run and lead id.
+- The verifier's Telegram calls are read-only (`getMe`, `getChat`, `getChatMember`).
 - Bot permissions are read from `getChatMember`, never inferred from a valid token.
 - No message is sent until a test environment and allowlist are configured and verified.
