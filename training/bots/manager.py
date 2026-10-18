@@ -52,6 +52,12 @@ class BotState:
     stopped_reason: str = ""
     #: The step each trainee chat has reached, keyed by chat id.
     progress: dict[int, int] = field(default_factory=dict)
+    #: Chats where this bot's lesson is running. In a group holding all three
+    #: managers, only the active one answers plain messages — otherwise every
+    #: sentence a trainee types draws three different replies.
+    active_chats: set[int] = field(default_factory=set)
+    #: An open question per chat, awaiting a typed answer.
+    pending: dict[int, str] = field(default_factory=dict)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -254,8 +260,17 @@ class ManagerBot:
                          chat_type=chat.get("type"), reason=why)
             return
 
+        # Being added to a group: introduce this bot and its lesson. Service
+        # messages arrive even with Telegram privacy mode left on.
+        if self._joined(message):
+            self.state.active_chats.add(chat_id)
+            self._reply(chat_id, self._text_intro(), None)
+            return
+
         text = (message.get("text") or "").strip()
+
         if not text.startswith("/"):
+            self._handle_plain(chat_id, text, message, str(chat.get("type", "")))
             return
 
         # In a group holding all three managers, Telegram delivers a bare
@@ -272,11 +287,114 @@ class ManagerBot:
                          command=command)
             return
 
+        # Any command addressed to this bot makes it the active teacher here.
+        self.state.active_chats.add(chat_id)
+
         reply = self._dispatch(command, chat_id)
         if reply is None:
             return
 
         self._reply(chat_id, reply, message.get("message_id"))
+
+    def _joined(self, message: dict[str, Any]) -> bool:
+        """True when this bot is among the newly added members."""
+        members = message.get("new_chat_members")
+        if not isinstance(members, list) or not self.username:
+            return False
+        return any(
+            isinstance(m, dict)
+            and str(m.get("username", "")).lower() == self.username.lower()
+            for m in members
+        )
+
+    def _handle_plain(self, chat_id: int, text: str, message: dict[str, Any],
+                      chat_type: str) -> None:
+        """Answers ordinary messages — the automatic part of the training.
+
+        In a group this runs only while this bot's lesson is active, so three
+        managers in one chat do not all answer the same sentence. A reply to
+        this bot's own message counts as addressed to it either way.
+        """
+        if not text:
+            return
+
+        replied_to = message.get("reply_to_message") or {}
+        from_bot = (replied_to.get("from") or {}).get("username", "")
+        is_reply_to_us = bool(self.username) and \
+            str(from_bot).lower() == self.username.lower()
+
+        if chat_type != "private" and chat_id not in self.state.active_chats \
+                and not is_reply_to_us:
+            return
+
+        question = self.state.pending.pop(chat_id, None)
+        if question is not None:
+            self._reply(chat_id, self._grade(question, text), message.get("message_id"))
+            return
+
+        # Nothing pending: nudge rather than stay silent, so a trainee who
+        # types instead of tapping is not left wondering.
+        if chat_type == "private" or is_reply_to_us:
+            self._reply(chat_id, self._text_nudge(), message.get("message_id"))
+
+    def _grade(self, question: str, answer: str) -> str:
+        """Checks a typed answer against the lead this bot is teaching from."""
+        lead = self._lead()
+        said = answer.lower()
+
+        if question == "contact":
+            wants_call = lead.contact_method == "phone"
+            said_call = any(w in said for w in
+                            ("qo'ng'ir", "qongir", "qo‘ng‘ir", "telefon", "call",
+                             "звон", "позвон"))
+            said_msg = any(w in said for w in
+                           ("telegram", "yoz", "xabar", "message", "напиш", "пиш"))
+            correct = (said_call and not said_msg) if wants_call else \
+                      (said_msg and not said_call)
+            label = prod.contact_method_label(lead.contact_method)
+            if correct:
+                return "\n".join([
+                    "✅ <b>To'g'ri.</b>",
+                    f"Arizada <b>Bog'lanish:</b> {_esc(label)} deb turibdi, "
+                    f"shuning uchun {'qo‘ng‘iroq qilasiz' if wants_call else 'Telegram orqali yozasiz'}.",
+                    "",
+                    "Bu — arizadagi <b>yagona</b> maydon: keyingi harakatingizni "
+                    "aynan shu belgilaydi.",
+                    "", "<b>/next</b> — davom etish.",
+                ])
+            return "\n".join([
+                "❌ <b>Noto'g'ri.</b>",
+                f"Arizada <b>Bog'lanish:</b> {_esc(label)} deb turibdi — "
+                f"demak {'qo‘ng‘iroq qilish' if wants_call else 'Telegram orqali yozish'} kerak.",
+                "",
+                "⚠️ Mijoz o'zi tanlagan usulni hurmat qiling. Ba'zilar "
+                "Telegram'ni tanlaydi, chunki ish vaqtida qo'ng'iroqni ola olmaydi.",
+                "", "<b>/next</b> — davom etish.",
+            ])
+
+        if question == "phone":
+            digits = "".join(ch for ch in said if ch.isdigit())
+            correct = digits.endswith("".join(
+                ch for ch in lead.phone if ch.isdigit())[-9:])
+            if correct:
+                return ("✅ <b>To'g'ri raqam.</b> Oxirgi ☎️ qatoridagi "
+                        "raqamni bosib tering — qo'lda ko'chirsangiz raqam "
+                        "adashishi mumkin.\n\n<b>/next</b> — davom etish.")
+            return ("❌ Bu raqam emas. Arizaning eng oxirgi ☎️ "
+                    f"qatoriga qarang: <code>{_esc(lead.phone)}</code>\n\n"
+                    "<b>/next</b> — davom etish.")
+
+        return self._text_nudge()
+
+    def _text_nudge(self) -> str:
+        return "\n".join([
+            f"Men <b>{_esc(self.role.display)}</b> — {_esc(self.role.scenario_id)} "
+            "darsini o'rgataman.",
+            "",
+            "<b>/lead</b> — namunaviy ariza va savol",
+            "<b>/next</b> — keyingi qadam",
+            "<b>/scenario</b> — dars rejasi",
+        ])
 
     def _dispatch(self, command: str, chat_id: int) -> str | None:
         if command in ("/start", "/help"):
@@ -284,7 +402,12 @@ class ManagerBot:
         if command == "/whoami":
             return self._text_whoami()
         if command == "/lead":
-            return self._text_lead()
+            return self._text_lead(chat_id)
+        if command == "/stop":
+            self.state.active_chats.discard(chat_id)
+            self.state.pending.pop(chat_id, None)
+            return ("Dars to'xtatildi. Qayta boshlash uchun "
+                    "<b>/start</b> yozing.")
         if command == "/scenario":
             return self._text_scenario_overview()
         if command == "/next":
@@ -296,7 +419,7 @@ class ManagerBot:
             return self._text_verify_scenario()
         return (
             "Bu buyruq mavjud emas. Mavjud buyruqlar: /start /whoami /lead "
-            "/scenario /next /reset /check"
+            "/scenario /next /reset /stop /check"
         )
 
     def _reply(self, chat_id: int, text: str, reply_to: int | None) -> None:
@@ -336,6 +459,7 @@ class ManagerBot:
             "/next — keyingi qadam",
             "/check — dars haqiqiy kodga mos ekanini tekshirish",
             "/reset — boshidan",
+            "/stop — darsni to'xtatish",
             "",
             "<i>Barcha arizalar sintetik. Raqamlarga qo'ng'iroq qilmang.</i>",
         ])
@@ -356,11 +480,16 @@ class ManagerBot:
         """This manager's lead. Fixed seed, so it is always the same one."""
         return generate(seed=self.role.seed, count=1)[0]
 
-    def _text_lead(self) -> str:
+    def _text_lead(self, chat_id: int | None = None) -> str:
         # The bot's own banner goes first so DRY RUN vs LIVE is stated on every
         # reply, not only on the ones that happen to build it themselves.
         lead = as_test_message(self._lead(), f"{self.role.bot_id}-seed{self.role.seed}")
-        return f"{self._banner()}\n\n{lead}"
+        question = ("\u2753 <b>Savol:</b> bu mijozga qanday bog'lanasiz — "
+                    "qo'ng'iroq qilasizmi yoki Telegram orqali yozasizmi?\n"
+                    "<i>Javobni shu yerga yozing.</i>")
+        if chat_id is not None:
+            self.state.pending[chat_id] = "contact"
+        return f"{self._banner()}\n\n{lead}\n\n{question}"
 
     def _text_scenario_overview(self) -> str:
         sc = by_id(self.role.scenario_id)

@@ -529,10 +529,135 @@ with tempfile.TemporaryDirectory() as d:
                                      "chat": {"id": 42, "type": "private"}}},
     ]])
     drain(bot, 2)
-    check("unknown command gets a helpful reply", bot.state.replies == 1,
+    # Plain text in a private chat is now answered with a nudge rather than
+    # ignored: a trainee who types instead of tapping should not be left
+    # wondering whether the bot is alive.
+    check("unknown command gets a helpful reply", bot.state.replies == 2,
           str(bot.state.replies))
-    check("plain text is ignored, not answered",
-          len(client.outbox) == 1 and "mavjud emas" in client.outbox[0].text)
+    check("the unknown command is named as such",
+          "mavjud emas" in client.outbox[0].text)
+    check("plain text gets a nudge listing the commands",
+          "/lead" in client.outbox[1].text, client.outbox[1].text[:80])
+
+# ── automatic replies in a group ────────────────────────────────────────────
+section("automatic group replies")
+
+GROUP = {"id": -100777, "type": "supergroup"}
+
+
+def msg(uid: int, text: str, chat=None, reply_from: str | None = None) -> dict:
+    m = {"update_id": uid,
+         "message": {"message_id": uid, "text": text, "chat": chat or GROUP}}
+    if reply_from:
+        m["message"]["reply_to_message"] = {"from": {"username": reply_from}}
+    return m
+
+
+with tempfile.TemporaryDirectory() as d:
+    # An inactive bot must stay silent on plain group chatter.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "salom"), msg(2, "bu nima"),
+    ]])
+    drain(bot, 2)
+    check("inactive bot ignores plain group messages", bot.state.replies == 0,
+          str(bot.state.replies))
+
+with tempfile.TemporaryDirectory() as d:
+    # Activated by its own command, it then answers plain messages.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "/lead@m1_bot"),
+        msg(2, "qo'ng'iroq qilaman"),
+    ]])
+    drain(bot, 2)
+    check("activated bot answers plain group messages", bot.state.replies == 2,
+          str(bot.state.replies))
+    check("the answer was graded",
+          "To'g'ri" in client.outbox[1].text or "Noto'g'ri" in client.outbox[1].text,
+          client.outbox[1].text[:80])
+
+with tempfile.TemporaryDirectory() as d:
+    # The decisive test: a command for bot 1 must not activate bot 2.
+    other, other_client = make_bot(1, d, token=TOKEN_2, updates=[[
+        msg(1, "/lead@m1_bot"),
+        msg(2, "qo'ng'iroq qilaman"),
+    ]])
+    drain(other, 2)
+    check("a command for another bot does not activate this one",
+          other.state.replies == 0, str(other.state.replies))
+
+with tempfile.TemporaryDirectory() as d:
+    # /stop makes it silent again.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "/start@m1_bot"), msg(2, "/stop@m1_bot"), msg(3, "salom"),
+    ]])
+    drain(bot, 3)
+    check("/stop silences the bot in that group", bot.state.replies == 2,
+          str(bot.state.replies))
+
+with tempfile.TemporaryDirectory() as d:
+    # A reply to this bot's own message reaches it even when inactive.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "qo'ng'iroq", reply_from="m1_bot"),
+    ]])
+    drain(bot, 1)
+    check("a reply to this bot is answered even when inactive",
+          bot.state.replies == 1, str(bot.state.replies))
+
+with tempfile.TemporaryDirectory() as d:
+    # A reply to a different bot is not ours to answer.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "qo'ng'iroq", reply_from="m2_bot"),
+    ]])
+    drain(bot, 1)
+    check("a reply to another bot is ignored", bot.state.replies == 0,
+          str(bot.state.replies))
+
+with tempfile.TemporaryDirectory() as d:
+    # Private chat needs no activation.
+    bot, client = make_bot(0, d, updates=[[
+        msg(1, "salom", chat={"id": 42, "type": "private"}),
+    ]])
+    drain(bot, 1)
+    check("private chat answers without activation", bot.state.replies == 1)
+
+with tempfile.TemporaryDirectory() as d:
+    # Joining a group introduces the bot — only when it is this bot added.
+    bot, client = make_bot(0, d, updates=[[
+        {"update_id": 1, "message": {"message_id": 1, "chat": GROUP,
+                                     "new_chat_members": [{"username": "m1_bot"}]}},
+    ]])
+    drain(bot, 1)
+    check("bot introduces itself when added to a group",
+          bot.state.replies == 1 and "S1" in client.outbox[0].text)
+
+with tempfile.TemporaryDirectory() as d:
+    bot, client = make_bot(0, d, updates=[[
+        {"update_id": 1, "message": {"message_id": 1, "chat": GROUP,
+                                     "new_chat_members": [{"username": "someone_else"}]}},
+    ]])
+    drain(bot, 1)
+    check("bot stays quiet when someone else joins", bot.state.replies == 0)
+
+# grading is deterministic and tied to the bot's own lead
+section("answer grading")
+with tempfile.TemporaryDirectory() as d:
+    bot, _ = make_bot(0, d)
+    lead = bot._lead()
+    wants_call = lead.contact_method == "phone"
+    right = "qo'ng'iroq qilaman" if wants_call else "telegram orqali yozaman"
+    wrong = "telegram orqali yozaman" if wants_call else "qo'ng'iroq qilaman"
+    check("correct contact-method answer is accepted",
+          "To'g'ri" in bot._grade("contact", right), bot._grade("contact", right)[:60])
+    check("wrong contact-method answer is rejected",
+          "Noto'g'ri" in bot._grade("contact", wrong), bot._grade("contact", wrong)[:60])
+    check("the reason is always explained",
+          "Bog'lanish" in bot._grade("contact", wrong))
+    check("correct phone answer is accepted",
+          "To'g'ri raqam" in bot._grade("phone", lead.phone))
+    check("wrong phone answer is rejected",
+          "raqam emas" in bot._grade("phone", "+998901112233"))
+    check("an unknown question falls back to the nudge",
+          "/lead" in bot._grade("nope", "x"))
 
 botlog.clear_secrets()
 print()

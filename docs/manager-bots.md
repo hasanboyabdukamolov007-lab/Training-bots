@@ -35,6 +35,7 @@ bot ignores the manager group entirely.
 | `/scenario` | the lesson plan — objective, starting state, steps |
 | `/next` | the next step: what should happen, why, and the common mistake |
 | `/reset` | back to step 1 (per chat) |
+| `/stop` | stop answering plain messages in this chat |
 | `/check` | runs the scenario for real and reports PASS/FAIL per step |
 
 Progress is tracked per chat, so two trainees in private chats do not interfere.
@@ -69,6 +70,61 @@ is how a genuine customer gets missed.
 
 Delete the test messages before handing the group over. Every one of them
 carries a `TEST MODE` banner, so they are easy to find.
+
+## Automatic replies in a group
+
+The bots answer ordinary messages, not only commands — but two things govern
+when.
+
+### Telegram privacy mode must be off
+
+By default a bot in a group receives **only** commands and replies to its own
+messages. Ordinary text never reaches it, so no amount of code makes it answer.
+For each of the three bots, in @BotFather:
+
+1. `/setprivacy` → pick the bot → **Disable**
+2. **Remove the bot from the group and add it again.** The change takes effect
+   only on re-joining; an already-present bot keeps its old setting.
+
+Leave privacy mode **on** if you only want command-driven training. Everything
+still works; the bots simply will not react to plain chatter.
+
+### Only the active bot answers
+
+With three managers in one group, every bot would otherwise answer every
+sentence — three replies to each message. So a bot answers plain text only
+while its lesson is active in that chat:
+
+| Event | Effect |
+|---|---|
+| Added to the group | introduces itself, becomes active |
+| Any `/command@ThisBot` | becomes active in that chat |
+| `/stop@ThisBot` | goes quiet in that chat |
+| Reply to this bot's own message | answered even when inactive |
+| Plain text while inactive | ignored |
+
+In a private chat no activation is needed.
+
+### What the automatic reply does
+
+`/lead` posts the synthetic lead and asks which way the manager should contact
+the customer. Whatever the trainee types next is graded:
+
+```
+✅ To'g'ri.
+Arizada Bog'lanish: Telefon qo'ng'irog'i deb turibdi, shuning uchun
+qo'ng'iroq qilasiz.
+
+Bu — arizadagi yagona maydon: keyingi harakatingizni aynan shu belgilaydi.
+```
+
+A wrong answer explains why, including the reason the choice matters: some
+customers pick Telegram because they cannot take calls at work.
+
+Grading is keyword-based and deterministic, tied to the bot's own fixed lead —
+it recognises Uzbek, Russian and English phrasings for calling versus
+messaging. Anything it does not recognise gets the command list rather than a
+wrong verdict.
 
 ## A test group is optional
 
