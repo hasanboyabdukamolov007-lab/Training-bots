@@ -84,6 +84,9 @@ class ManagerBot:
         self._lock = PollLock(token=bot_cfg.token,
                               **({"lock_dir": lock_dir} if lock_dir else {}))
         self._thread: threading.Thread | None = None
+        #: Our own @username, learned from getMe. Used to tell whether a
+        #: command in a group was addressed to us or to another bot.
+        self.username = ""
         botlog.register_secret(bot_cfg.token)
 
     # ── identity ───────────────────────────────────────────────────────────
@@ -110,6 +113,7 @@ class ManagerBot:
             return False, detail
 
         username = me.get("username", "")
+        self.username = username
         self.state.identity = f"@{username} (id {me.get('id')})"
         self.state.verified = True
         botlog.event(self.log, self.role.bot_id, "identity.verified",
@@ -254,8 +258,20 @@ class ManagerBot:
         if not text.startswith("/"):
             return
 
-        # Strip the @botname Telegram appends to commands in groups.
-        command = text.split()[0].split("@")[0].lower()
+        # In a group holding all three managers, Telegram delivers a bare
+        # "/next" to every one of them. Answering a command addressed to a
+        # different bot would bury the trainee in three different lessons, so
+        # an explicit @name that is not ours is ignored.
+        head = text.split()[0]
+        command, _, addressed_to = head.partition("@")
+        command = command.lower()
+        if addressed_to and self.username and \
+                addressed_to.lower() != self.username.lower():
+            botlog.event(self.log, self.role.bot_id, "command.not_ours",
+                         chat_id=chat_id, addressed_to=addressed_to,
+                         command=command)
+            return
+
         reply = self._dispatch(command, chat_id)
         if reply is None:
             return

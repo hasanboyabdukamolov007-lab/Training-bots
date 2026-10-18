@@ -502,13 +502,24 @@ with tempfile.TemporaryDirectory() as d:
           client.outbox[0].text[:120] if client.outbox else "no reply")
 
 with tempfile.TemporaryDirectory() as d:
-    # commands addressed as /lead@BotName in a group must still work
+    # A command addressed to THIS bot is answered; one addressed to another bot
+    # is ignored. Without this, three managers in one group all answer a single
+    # /next and the trainee gets three different lessons at once.
     bot, client = make_bot(0, d, updates=[[
-        {"update_id": 1, "message": {"message_id": 1, "text": "/lead@Training1Bot",
+        {"update_id": 1, "message": {"message_id": 1, "text": "/lead@m1_bot",
+                                     "chat": {"id": -100777, "type": "supergroup"}}},
+        {"update_id": 2, "message": {"message_id": 2, "text": "/lead@m2_bot",
+                                     "chat": {"id": -100777, "type": "supergroup"}}},
+        {"update_id": 3, "message": {"message_id": 3, "text": "/lead",
                                      "chat": {"id": -100777, "type": "supergroup"}}},
     ]])
-    drain(bot, 1)
-    check("/command@botname is understood in groups", bot.state.replies == 1)
+    drain(bot, 3)
+    check("command addressed to this bot is answered", bot.state.replies == 2,
+          str(bot.state.replies))
+    check("command addressed to another bot is ignored",
+          len(client.outbox) == 2, str(len(client.outbox)))
+    check("bare command is still answered (no @name given)",
+          bot.state.updates_handled == 3)
 
 with tempfile.TemporaryDirectory() as d:
     bot, client = make_bot(0, d, updates=[[

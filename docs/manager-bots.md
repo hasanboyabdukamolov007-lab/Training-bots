@@ -37,8 +37,38 @@ bot ignores the manager group entirely.
 | `/reset` | back to step 1 (per chat) |
 | `/check` | runs the scenario for real and reports PASS/FAIL per step |
 
-`/command@BotName` works too, which is how Telegram delivers commands in groups.
 Progress is tracked per chat, so two trainees in private chats do not interfere.
+
+### Addressing one bot in a shared group
+
+Telegram delivers a bare `/next` to **every** bot in a group, so with all three
+managers present a single command would otherwise produce three different
+lessons at once. Each bot therefore answers only commands addressed to it:
+
+| Typed in a group with all three | Answers |
+|---|---|
+| `/next@Manager2Bot` | manager 2 only |
+| `/next` | all three |
+
+Use `/command@BotName` in a shared group. In a private chat the bare command is
+unambiguous and always works.
+
+## Using a group that is not yet live
+
+A manager group that has **not yet handled any real leads** is safe to train
+in: there is nothing to bury and no customer waiting. Add the three bots, put
+its id in `TRAINING_MANAGER_GROUP_ID` and `TRAINING_ALLOWED_CHAT_IDS`, and
+train there.
+
+Have an exit plan, because temporary arrangements last. **Before the first real
+lead can arrive** — the day the site or the production bot goes live — remove
+the three bots from that group and clear its id from this configuration, then
+add it to `TRAINING_FORBIDDEN_CHAT_IDS`. After that point the group belongs to
+real customers, and a synthetic lead with a fake phone number among real ones
+is how a genuine customer gets missed.
+
+Delete the test messages before handing the group over. Every one of them
+carries a `TEST MODE` banner, so they are easy to find.
 
 ## A test group is optional
 
