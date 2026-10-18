@@ -27,7 +27,11 @@ def _print_config(cfg: botconfig.RuntimeConfig) -> None:
     print(f"environment : {cfg.environment or '(unset)'}")
     print(f"dry run     : {cfg.dry_run}"
           f"{'  (no message will be sent)' if cfg.dry_run else '  ** LIVE — messages WILL be sent **'}")
-    print(f"test group  : {cfg.group_id if cfg.group_id is not None else '(unset)'}")
+    if cfg.group_id is None:
+        print("test group  : (none) — private-chat training only; "
+              "no group will be posted to")
+    else:
+        print(f"test group  : {cfg.group_id}")
     print(f"allowlist   : {sorted(cfg.allowed_chat_ids) or '(empty)'}")
     print(f"denylist    : {sorted(cfg.forbidden_chat_ids) or '(empty)'}")
     if cfg.errors:
@@ -54,8 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     logger = botlog.get_logger()
-    needs_group = args.command in ("start", "start-all")
-    cfg = botconfig.load(args.env_file, require_group=needs_group)
+    cfg = botconfig.load(args.env_file)
     for bot in cfg.bots:
         if bot.token:
             botlog.register_secret(bot.token)

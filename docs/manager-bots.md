@@ -40,6 +40,21 @@ bot ignores the manager group entirely.
 `/command@BotName` works too, which is how Telegram delivers commands in groups.
 Progress is tracked per chat, so two trainees in private chats do not interfere.
 
+## A test group is optional
+
+Private chats work for every lesson: a trainee opens a chat with each bot and
+uses `/start`, `/lead`, `/scenario`, `/next` and `/check`. Nothing else is
+needed, and `TRAINING_MANAGER_GROUP_ID` can stay blank.
+
+A group is only for watching the lesson together. If you use one, create a
+**new** one. Never point this at the real manager group: synthetic leads carry
+fake phone numbers, a manager might dial one, and a genuine customer's lead
+could be missed among the test traffic. Put the real group's id in
+`TRAINING_FORBIDDEN_CHAT_IDS` so reaching it becomes impossible.
+
+When no group is configured, every group chat is refused and only private chats
+are answered.
+
 ## Running them
 
 ```bash

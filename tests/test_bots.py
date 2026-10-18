@@ -117,12 +117,22 @@ rejects("rejects a group on the denylist",
 rejects("rejects a non-integer group id", TRAINING_MANAGER_GROUP_ID="abc")
 rejects("rejects a non-integer in the allowlist", TRAINING_ALLOWED_CHAT_IDS="-100,xyz")
 
-c = botconfig.load(env=base_env(TRAINING_MANAGER_GROUP_ID="<unset>"), require_group=True)
-check("requires the group id when starting", not c.ok, str(c.errors))
+# A group is optional: private-chat training is a complete mode, and requiring
+# an unused group id only tempts someone into entering the production group's.
+c = botconfig.load(env=base_env(TRAINING_MANAGER_GROUP_ID="<unset>"))
+check("no group id is allowed (private-chat training)", c.ok, str(c.errors))
+check("no group id reports private-only", c.private_only)
+check("bots still usable without a group", len(c.runnable) == 3)
+allowed, _ = c.is_chat_allowed(4242, "private")
+check("private chat still permitted without a group", allowed)
+allowed, why = c.is_chat_allowed(-100999, "supergroup")
+check("every group refused when none is configured", not allowed, why)
+
 c = botconfig.load(env=base_env(TRAINING_MANAGER_GROUP_ID="-1000000000000",
-                                TRAINING_ALLOWED_CHAT_IDS="-1000000000000"),
-                   require_group=True)
-check("rejects the placeholder group id when starting", not c.ok, str(c.errors))
+                                TRAINING_ALLOWED_CHAT_IDS="-1000000000000"))
+check("the placeholder group is treated as no group", c.private_only, str(c.group_id))
+check("a configured group is not private-only",
+      not botconfig.load(env=base_env()).private_only)
 
 # per-bot token problems must not disable the others
 c = botconfig.load(env=base_env(TRAINING_MANAGER_02_BOT_TOKEN="<unset>"))

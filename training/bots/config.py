@@ -111,6 +111,11 @@ class RuntimeConfig:
     def runnable(self) -> list[BotConfig]:
         return [b for b in self.bots if b.ok]
 
+    @property
+    def private_only(self) -> bool:
+        """No test group configured: trainees use private chats with each bot."""
+        return self.group_id is None
+
     def is_chat_allowed(self, chat_id: int, chat_type: str) -> tuple[bool, str]:
         """Whether this bot may reply in a chat.
 
@@ -172,17 +177,15 @@ def load(env_file: str = ".env", env: dict[str, str] | None = None,
     # Dry run is on unless explicitly turned off. A typo leaves it on.
     cfg.dry_run = _parse_bool(e.get("TRAINING_DRY_RUN", ""), default=True)
 
+    # A test group is optional. Training in a private chat with each bot is a
+    # complete mode on its own, and demanding a group id that will never be
+    # used only tempts someone into entering the real manager group's id.
     raw_group = e.get("TRAINING_MANAGER_GROUP_ID", "").strip()
     if raw_group and raw_group != "-1000000000000":
         try:
             cfg.group_id = int(raw_group)
         except ValueError:
             cfg.errors.append(f"TRAINING_MANAGER_GROUP_ID is not an integer: {raw_group!r}")
-    elif raw_group == "-1000000000000":
-        if require_group:
-            cfg.errors.append("TRAINING_MANAGER_GROUP_ID is still the placeholder")
-    elif require_group:
-        cfg.errors.append("TRAINING_MANAGER_GROUP_ID is not set")
 
     cfg.allowed_chat_ids, bad_allow = _parse_ids(e.get("TRAINING_ALLOWED_CHAT_IDS", ""))
     for b in bad_allow:
