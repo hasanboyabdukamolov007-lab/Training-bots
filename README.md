@@ -59,12 +59,32 @@ This is a training tool, so being wrong is worse than being incomplete:
 | `training/scenarios.py` | The three scenarios and their verification |
 | `training/runner.py` | CLI, isolation guard, run reports |
 | `training/modes.py` | Execution modes, audit log, token redaction |
+| `training/envfile.py` | The single `.env` parser, used everywhere |
+| `training/bots/` | **Executable runtimes for the three manager bots** |
+| [`docs/manager-bots.md`](docs/manager-bots.md) | Running the manager bots; guards, isolation, logging |
 | `tests/test_training.py` | 91 offline checks |
+| `tests/test_bots.py` | 121 offline checks for the bot runtimes |
 | `scripts/verify_training_bots.py` | Read-only verifier for tokens, identities, group access |
 | `scripts/test_verify_training_bots.py` | 22 offline checks for the verifier |
 
 Nothing posts to Telegram unless you pass `--post`, and that is refused unless
 every isolation guard passes.
+
+## The three manager bots
+
+Each is a real Telegram bot a trainee talks to, teaching one scenario:
+manager 1 → S1, manager 2 → S2, manager 3 → S3.
+
+```bash
+python3 -m training.bots status      # configuration and roles
+python3 -m training.bots verify      # getMe for each token
+python3 -m training.bots start-all   # start all three
+python3 -m training.bots self-test   # whole runtime, offline
+```
+
+**Dry run is on by default** — nothing is transmitted until you set
+`TRAINING_DRY_RUN=false` deliberately. Full details, guards and failure
+isolation in [`docs/manager-bots.md`](docs/manager-bots.md).
 
 ## Quick start
 

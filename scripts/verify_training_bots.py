@@ -93,20 +93,11 @@ def redact(text: str) -> str:
     return re.sub(r"\d{5,}:[A-Za-z0-9_-]{30,}", "<redacted-token>", text)
 
 
-def load_env_file(path: str) -> dict[str, str]:
-    """Minimal KEY=VALUE parser. Does not execute the file."""
-    values: dict[str, str] = {}
-    if not os.path.isfile(path):
-        return values
-    with open(path, encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            val = val.strip().strip('"').strip("'")
-            values[key.strip()] = val
-    return values
+# The canonical .env parser lives in training/envfile.py. Imported rather than
+# duplicated, with a sys.path nudge so this file still runs as a plain script
+# from anywhere in the repo.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from training.envfile import load_env_file  # noqa: E402
 
 
 def call(token: str, method: str, **params: object) -> tuple[bool, object]:

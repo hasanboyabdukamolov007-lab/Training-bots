@@ -29,6 +29,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from training import production as prod
+from training.envfile import load_env_file
 from training.leads import generate
 from training.modes import Mode, RunLog, Status, Step, redact
 from training.render import as_test_message
@@ -43,20 +44,6 @@ _BADGE = {
     Status.BLOCKED: "⚠ BLOCKED",
     Status.NOT_TESTED: "– NOT TESTED",
 }
-
-
-def load_env_file(path: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not os.path.isfile(path):
-        return values
-    with open(path, encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            values[k.strip()] = v.strip().strip('"').strip("'")
-    return values
 
 
 class PostGuard:
