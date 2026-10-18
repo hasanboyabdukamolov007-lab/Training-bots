@@ -1,142 +1,216 @@
 # Repository Audit — Training Bots Subsystem
 
 **Date:** 2026-10-18
-**Scope requested:** extend an existing Telegram customer-service bot with a five-bot
-training/testing subsystem (3 managers, 1 administrator, 1 leader).
+**Production system audited:** `hasanboyabdukamolov007-lab/Alcana-taplink-page`
+(commit `9c701bb`, 2026-09-18)
+**Scope requested:** extend an existing Telegram customer-service bot with a
+five-bot training/testing subsystem (3 managers, 1 administrator, 1 leader).
 
-## 1. Headline finding: there is no existing project to extend
+## 1. Summary
 
-The audit required by the task specification was performed first, before any
-implementation. Result:
+The production project exists, is real, and is in good health. It is **not** a
+customer-service request-management system. It is a **lead-capture and
+notification** system.
 
-| Audit question | Finding |
-|---|---|
-| Existing repository contents | **Empty.** Zero files, zero commits. |
-| Remote branches | **None.** `git ls-remote --heads origin` returns nothing; GitHub API `list_branches` returns `[]`. |
-| Documentation | None. |
-| Dependencies / manifest | None. No `requirements.txt`, `package.json`, `pyproject.toml`, lockfile, or Dockerfile. |
-| Telegram handlers | None. |
-| Request lifecycle | Not implemented. |
-| Database / schema / migrations | None. |
-| Roles & permissions model | None. |
-| Manager-group configuration | None. |
-| Existing tests | None. |
-| Existing test/demo/synthetic-data mode | None. |
+That distinction decides this whole task. The training specification is written
+against a request-management product — statuses, assignment, SLA, internal
+notes, complaints, escalation, search, audit. Essentially none of that exists
+here, and the manager group is a one-way notification sink that the bot
+deliberately ignores. Roughly **1 of the 15 required training scenarios** is
+demonstrable against the real application today.
 
-Verification commands and their actual output are recorded in
-[`docs/audit-evidence.md`](docs/audit-evidence.md).
+Baseline health, measured not assumed:
 
-The repository `hasanboyabdukamolov007-lab/Training-bots` was created empty
-(pushed_at 2026-10-18T03:07Z, same timestamp as this session's container start)
-and contains no production system.
-
-## 2. Why this blocks most of the requested work
-
-The specification defines the training subsystem *relative to an existing
-application*. It is explicit that the subsystem must use the real thing and must
-not invent workflows:
-
-- §3: "Do not assume that any feature exists merely because it appears in a specification."
-- §7: "Use the actual request-to-manager-group workflow wherever possible."
-- §8: "The bots must not merely post example messages. They should use the actual
-  application workflow or an explicitly identified test adapter, and verify the
-  resulting state."
-- §13: "The training system should teach the actual existing product, not invent
-  unsupported workflows."
-- §18: "Preserve the existing project and all current functionality. ... Do not
-  rewrite the production bot from scratch."
-
-With no application present there is nothing to post into a manager group,
-no status model to transition, no roles to enforce, no notifications to verify,
-and no product for employees to be trained on. Building these now would mean
-inventing a production workflow and then "training" staff on a fiction — the
-specific outcome §13 forbids. It would also contradict §18, since there is no
-existing project to preserve or extend.
-
-Therefore the audit stops short of implementing §7–§16 and reports the blocker,
-as §5 and §20 require.
-
-## 3. What was NOT done, and deliberately so
-
-- **No Telegram messages were sent.** §5 and §20 forbid this until a test
-  environment and chat allowlist are configured and verified. Neither exists yet.
-  No token has been supplied to this session, and none was requested.
-- **No production bot was scaffolded.** Inventing one would make every later
-  "PASS" meaningless.
-- **No synthetic requests were generated**, since there is no request model,
-  no isolated datastore, and no verified test group to route them to.
-- **No other repository was read.** This session is scoped to `Training-bots`
-  only; the account's other repositories were listed but not opened, and none
-  were added, because that was not requested.
-
-## 4. Production/test isolation: cannot yet be established
-
-§5 requires a verified-isolated datastore, separate configuration, a dedicated
-test group, test-only tokens, a chat allowlist, and a startup check that
-*rejects production configuration*. The last item is currently unimplementable in
-a meaningful way: rejecting production config requires knowing what production
-config looks like, which requires the production system.
-
-Per §5 ("If test and production environments cannot be reliably separated, stop
-and report the blocker before sending any Telegram message") this is reported
-rather than approximated.
-
-## 5. Telegram platform constraints (app-independent, confirmed)
-
-These hold regardless of the missing application and shape the final design:
-
-- A bot cannot initiate a private conversation with a user or another bot; the
-  other party must message first. Five tokens therefore do **not** yield five
-  agents able to reproduce arbitrary human manager actions.
-- By default a bot in a group has privacy mode enabled and receives only
-  commands and replies addressed to it, not all group messages.
-- Bots do not see other bots' messages in groups. **This is the decisive
-  constraint for this design:** the five training bots cannot observe or react to
-  each other in the test group. Any manager-to-manager interaction (hand-off,
-  concurrent claim, reassignment) must be driven through the application service
-  layer, not through Telegram.
-- A bot cannot add itself to a group, and cannot grant itself administrator
-  rights. Both are manual owner actions.
-- A valid token proves identity only — never permissions. Rights must be read
-  via `getChatMember`, not assumed.
-
-Consequence: the realistic execution-mode split for the requested scenarios is
-mostly `APPLICATION_INTEGRATION`, with `TELEGRAM_BOT_API` limited to identity
-checks, group posting, and callback handling on a bot's own messages.
-
-## 6. Recommended next step
-
-Point this subsystem at the real project. Either:
-
-1. **The production bot lives in another repository** — name it and it can be
-   added to this session, audited properly, and extended as specified; or
-2. **The production bot does not exist yet** — then the correct order is to build
-   the customer-service bot first and add the training subsystem afterwards. A
-   training harness cannot precede the product it trains on.
-
-## 7. What was delivered in the meantime
-
-Only the pieces that are genuinely independent of the unknown application, and
-that you need in hand before any of the rest can run:
-
-| Deliverable (spec §) | File | Status |
+| Check | Command | Result |
 |---|---|---|
-| Repository audit (§3, D1) | this file, `docs/audit-evidence.md` | Done |
-| Environment variable template (§6, D3) | `.env.example` | Done |
-| BotFather setup instructions (§6, D4) | `docs/botfather-setup.md` | Done |
-| Adding bots to the test group (§6, D5) | `docs/botfather-setup.md` | Done |
-| Group ID & permission verification procedure (§7, D6) | `docs/botfather-setup.md`, `scripts/verify_training_bots.py` | Done |
-| Telegram capability analysis (§4) | §5 above | Done |
-| Architecture for the five bots (§2, D2) | — | **Blocked** — depends on the real app's handlers, roles and request model |
-| Synthetic request generator (§12, D7) | — | **Blocked** — no request model or isolated store |
-| Training scenarios (§8–§11, §13, D8/D9) | — | **Blocked** — no product workflow to teach |
-| Automated test suite (§14, D10) | — | **Blocked** — nothing to assert against |
-| Dashboard (§15, D11) | — | **Blocked** — no test records to display; §15 forbids hardcoded metrics |
-| Self-healing workflow (§16, D12) | — | **Blocked** — no test suite to heal |
-| Production-isolation checks (§5, D13) | partial — token/identity/allowlist checks only | **Partial**, see §4 |
+| Typecheck | `npx tsc --noEmit` | **clean**, exit 0 |
+| Tests | `npx vitest run` | **175 passed**, 13 files, 1.70s |
+| Install | `npm ci` | clean |
 
-The verification tool is real and runnable today: it validates that five supplied
-tokens resolve to five *distinct* bot identities, checks the configured group
-against the allowlist, and reports each bot's actual membership and rights. It
-performs read-only Telegram API calls (`getMe`, `getChat`, `getChatMember`) and
-sends no messages.
+The code is well-commented, zod-validated, HTML-escaped, rate-limited, and has
+genuine test coverage. Nothing below is a criticism of it.
+
+## 2. What the production system actually does
+
+A Next.js 16 / React 19 link-in-bio page for ALCANA PRINT, with Telegram lead
+delivery. No database, no ORM, no persistence of any kind.
+
+### Two intake paths, one destination
+
+**Path A — web form:** `POST /api/lead` (`src/app/api/lead/route.ts`)
+→ zod validation (`lib/lead-schema.ts`), rate limit 5/IP/10min
+(`lib/rate-limit.ts`) → `notifyNewLead()` → `sendTelegramMessage()`.
+
+**Path B — the bot conversation:** `@alcana_lead_bot`, a 4-step private chat
+(`src/app/api/telegram/webhook/route.ts` + `lib/telegram-bot.ts`):
+
+1. `/start` → reply keyboard with `request_contact`
+2. contact shared → inline keyboard of services (`svc:<id>` callback data)
+3. service tapped → `force_reply` prompt for project details
+4. details replied → confirm to customer, post to manager group
+
+**Both paths end at the same place:** a single `sendMessage` with
+`parse_mode: "HTML"` to `TELEGRAM_MANAGER_CHAT_ID`, optionally inside a forum
+topic via `TELEGRAM_MESSAGE_THREAD_ID`.
+
+### The manager-group workflow, documented exactly as asked (§20)
+
+> A lead arrives → the app posts **one HTML message** into the manager chat →
+> a human manager reads it and **telephones the customer**.
+
+That is the entire workflow. Specifically:
+
+- The group message carries **no buttons, no inline keyboard, no callbacks**.
+  Callbacks exist in this codebase only in the *customer's private chat*, for
+  service selection.
+- **The bot is deliberately silent in the group.**
+  `src/app/api/telegram/webhook/route.ts:95` — `if (message.chat?.type !== "private") return;`
+  with the comment *"the bot is also a member of the managers' group, and must
+  stay silent there."* Group messages are read and discarded.
+- Managers take **no action in Telegram**. There is nothing to press, reply to,
+  or change. The follow-up happens by phone, using the numbers in
+  `siteConfig.contacts.phones`.
+- Delivery failure is handled by logging the lead to stderr
+  (`route.ts:246`) so it is recoverable by hand. There is no queue and no retry
+  beyond `sendTelegramMessage`'s single retry on 5xx/network.
+
+### Statelessness is a deliberate design choice
+
+`lib/telegram-bot.ts:14` — *"no server-side session store: on Vercel each
+webhook call can land on a different instance."* Conversation state is
+re-derived by parsing the bot's own prior message text, using `📞` and `🧩`
+markers (`readPrompt()`). This survives cold starts and redeploys.
+
+The consequence for this task: **nothing is ever stored.** There is no row to
+assign, transition, search, audit, or report on.
+
+## 3. Gap analysis against the training specification
+
+| Spec requirement | Present? | Evidence |
+|---|---|---|
+| Request/ticket entity | **No** | no model; `grep -ri ticket\|requestId src/` → 0 files |
+| Persistent request ID | **No** | nothing is stored; group `message_id` is the only handle |
+| Database / datastore | **No** | no ORM or DB dependency in `package.json` |
+| Roles (manager/admin/leader) | **No** | `role` appears only as ARIA attributes in JSX |
+| Request statuses | **No** | `status` is React form state and HTTP codes only |
+| Accept / claim a request | **No** | `grep -ri claim` → 0 files |
+| Assignment / reassignment | **No** | `grep -ri assign` → 0 files |
+| Internal notes | **No** | no such concept |
+| Priority | **No** | `priority` appears only in `sitemap.ts` and one CSS comment |
+| SLA / due dates / overdue | **No** | no scheduling, no timers, no stored timestamps |
+| Complaints | **No** | `grep -ri complaint` → 0 files |
+| Escalation | **No** | `grep -ri escalat` → 0 files |
+| Reopen / cancel | **No** | `grep -ri reopen` → 0 files |
+| Merge / split | **No** | not implemented |
+| Search / saved views | **No** | nothing to search |
+| Request timeline | **No** | no history |
+| Audit log | **No** | `grep -ri audit` → 0 files |
+| Attachment handling | **No** | webhook reads `text` and `contact` only |
+| Customer notification | **Yes** | `managersReply()`, sent to the customer's private chat |
+| Manager-group posting | **Yes** | one-way `sendMessage` to `TELEGRAM_MANAGER_CHAT_ID` |
+| Callbacks | **Partial** | private chat only (`svc:<id>`); never in the group |
+| Multi-language | **Partial** | the product is **Uzbek-only**; no RU/EN strings exist |
+
+Note the last row: §12 and §14 require Uzbek, Russian and English. The product
+ships Uzbek only. Preserving "existing Uzbek, Russian and English support" (§18)
+is not possible, because RU and EN support does not exist to preserve.
+
+### The five-bot premise does not fit this architecture
+
+- The app reads **one** token, `TELEGRAM_BOT_TOKEN` (`lib/env.ts:13`). There is
+  no notion of multiple bot identities, and no manager identity at all.
+- Five training bots in the manager group would be **five silent members**. The
+  app ignores group messages, so nothing they posted could affect anything.
+- **Bots cannot see each other's messages in a Telegram group.** Even if the app
+  listened, the bots could not observe or respond to one another, so every
+  manager-to-manager scenario (§9: hand-off, concurrent claim, reassignment) is
+  impossible over Telegram and would have to run through a service layer that
+  does not exist.
+- A valid token proves identity only, never permission.
+
+## 4. Of the 15 required training scenarios (§13)
+
+| # | Scenario | Buildable today |
+|---|---|---|
+| 1 | Processing a routine request | **Partial** — a lead notification can be demonstrated end-to-end |
+| 3 | Responding to a customer | **Partial** — only as the real product does it: by telephone |
+| 5 | Handling an attachment | No — attachments are not read |
+| 12 | Using search and saved views | No — no search |
+| 13 | Exporting request history | No — no history |
+| 2, 4, 6–11, 14, 15 | claiming, info requests, internal notes, urgency, SLA, complaints, reassignment, completion, escalation, duplicates | **No** — none of these features exist |
+
+## 5. Production isolation: achievable, and this is the good news
+
+§5's isolation requirement **can** be satisfied cleanly, because the target chat
+is entirely environment-driven:
+
+- `TELEGRAM_MANAGER_CHAT_ID` is read per request from env (`lib/env.ts:19`),
+  never hardcoded.
+- `readTelegramEnv()` is injectable (`source` parameter), and `fetchImpl` is
+  injectable throughout `lib/telegram.ts` — the existing tests already use this
+  to assert against the network without touching it.
+- `TELEGRAM_MESSAGE_THREAD_ID` allows a dedicated forum topic.
+
+So a **separate deployment with separate env vars, a separate test bot token and
+a separate test group** isolates test traffic from production without modifying
+production code at all. No database needs separating, because there is no
+database. This is the one part of the spec that fits this codebase well.
+
+The startup check that "rejects production configuration" (§5) is implementable
+as: refuse to run if the configured chat id equals the production one, and
+refuse unless the chat id is in an explicit allowlist.
+
+## 6. What this means
+
+The specification assumes a product that does not exist here. Building the
+subsystem as written would require first building a request-management
+system — database, tickets, roles, statuses, assignment, SLA, notes, audit —
+which is a far larger undertaking than the training harness, and is precisely
+the "existing production bot" the spec says not to write (§18).
+
+Two honest paths, which lead to very different amounts of work:
+
+**A. Scope the training subsystem to the product that exists.** Train managers
+on the real workflow: how a lead reaches the group, how to read every field,
+the bot's 4-step conversation, what a delivery failure looks like in the logs,
+and how to follow up by phone. Small, genuinely useful, buildable now, and it
+teaches the actual product as §13 demands.
+
+**B. Build the request-management layer first,** then the training subsystem on
+top. This is what the spec describes, but it is a new product, not an
+extension — and the training harness cannot precede it.
+
+This audit stops here rather than guessing between them, because the two differ
+by an order of magnitude in scope.
+
+## 7. Safety: nothing was sent, nothing was changed
+
+- **No Telegram message was sent.** §5/§20 forbid it until a test environment
+  and allowlist are configured and verified. No token was supplied or requested.
+- **The production repository was not modified.** It was cloned read-only;
+  `npm ci` wrote only `node_modules`, which is git-ignored.
+- No production chat id, token, or routing was touched.
+- Note: `api.telegram.org` is unreachable from this build environment (proxy
+  returns 403 on CONNECT), so no live Telegram call could be made from here
+  regardless. Live verification must run from the owner's host.
+
+## 8. Deliverable status
+
+| Deliverable (§19) | Status |
+|---|---|
+| 1. Repository audit | **Done** — this file |
+| 3. Environment variable template | **Done** — `.env.example` |
+| 4. BotFather setup instructions | **Done** — `docs/botfather-setup.md` |
+| 5. Adding bots to the test group | **Done** — `docs/botfather-setup.md` |
+| 6. Group ID & permission verification | **Done** — `scripts/verify_training_bots.py`, 22 offline tests passing |
+| 13. Production-isolation checks | **Partial** — env guard, chat allowlist, token/identity checks |
+| 2. Architecture for five role bots | **Blocked** — pending the path A/B decision in §6 |
+| 7. Synthetic request generator | **Blocked** — no request entity or store to generate into |
+| 8/9. Training & admin/leader scenarios | **Blocked** — 14 of 15 scenarios reference absent features |
+| 10. Automated test suite | **Blocked** — no workflow to assert against |
+| 11. Visual dashboard | **Blocked** — no test records; §15 forbids hardcoded metrics |
+| 12. Self-healing workflow | **Blocked** — no test suite to heal |
+
+The verifier in `scripts/` is real, runnable, and useful under either path: it
+validates that supplied tokens resolve to distinct bots and reports actual group
+rights, using read-only calls only.

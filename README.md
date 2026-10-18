@@ -5,34 +5,45 @@ Intended purpose: a five-bot Telegram subsystem (3 managers, 1 administrator,
 runs labelled synthetic requests in an isolated test environment, and trains
 employees on the actual product.
 
-## Current status: blocked on the production system
+## Current status: awaiting a scoping decision
 
-**This repository was empty.** There is no customer-service bot here to extend,
-demonstrate, or train anyone on. The audit that the specification requires as
-step one found zero files and zero commits.
+The production system has been located and audited:
+**[`Alcana-taplink-page`](https://github.com/hasanboyabdukamolov007-lab/Alcana-taplink-page)**
+(commit `9c701bb`). It is real, clean, and healthy — 175 tests pass, typecheck
+clean.
 
-Read [`AUDIT.md`](AUDIT.md) for the finding, what it blocks and why, and
-[`docs/audit-evidence.md`](docs/audit-evidence.md) for the raw command output.
+It is, however, a **lead-capture and notification** system, not a
+customer-service **request-management** system. The manager group is a one-way
+notification sink that the bot deliberately ignores
+(`webhook/route.ts:95` — *"must stay silent there"*). There is no database, no
+request entity, no roles, no statuses, no assignment, no SLA, no internal notes,
+no escalation, and no audit log. Managers read a notification and telephone the
+customer; they take no action in Telegram at all.
 
-The training subsystem cannot be built against an application that is not
-present: there is no request model to create, no manager group routing to
-exercise, no status machine to transition, no roles to enforce, and no product
-for employees to learn. Implementing it anyway would mean inventing a workflow
-and then training staff on a fiction — which the specification explicitly
-forbids (§3, §8, §13, §18).
+Consequently **1 of the 15 required training scenarios** is demonstrable against
+the real product. Read [`AUDIT.md`](AUDIT.md) for the full gap analysis and the
+documented manager-group workflow.
 
-**To unblock:** point this at the real project — either name the repository that
-holds the production bot so it can be audited and extended, or build the
-customer-service bot first and add this subsystem afterwards.
+Two paths, differing by an order of magnitude in scope:
+
+- **A — scope the training to the product that exists.** Teach the real
+  workflow: how a lead reaches the group, how to read each field, the bot's
+  4-step conversation, delivery failures, phone follow-up. Small, useful,
+  buildable now.
+- **B — build the request-management layer first,** then train on it. This is
+  what the specification describes, but it is a new product rather than an
+  extension.
+
+No work has been committed toward either until that is decided.
 
 ## What is here and working today
 
-Only the pieces that genuinely do not depend on the unknown application:
+The environment-setup pieces, which are useful under either path above:
 
 | File | Purpose |
 |---|---|
 | [`AUDIT.md`](AUDIT.md) | Audit findings, Telegram platform analysis, per-deliverable status |
-| [`docs/audit-evidence.md`](docs/audit-evidence.md) | Raw, reproducible command output |
+| [`docs/audit-evidence.md`](docs/audit-evidence.md) | Raw, reproducible command output from both audits |
 | [`.env.example`](.env.example) | Exact configuration template, placeholders only |
 | [`docs/botfather-setup.md`](docs/botfather-setup.md) | Creating the five bots, the test group, rights, and verification |
 | [`scripts/verify_training_bots.py`](scripts/verify_training_bots.py) | Read-only verifier for tokens, identities, group access |
